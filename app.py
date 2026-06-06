@@ -234,13 +234,13 @@ def calculate_date():
         existing_row = 0  # 1-based
 
         if pending_row_index > 0:
-            # 检查该行是否仍然是待提交状态（F列为空）
-            check_data = read_sheet_range(SHEET_ID, f"A{pending_row_index}:F{pending_row_index}")
+            # 检查该行是否属于当前用户（K列 submitter_id 匹配）
+            check_data = read_sheet_range(SHEET_ID, f"A{pending_row_index}:K{pending_row_index}")
             check_rows = check_data.get("rows", [])
             if check_rows:
                 check_values = [parse_cell_value(v.get("cellValue")) for v in check_rows[0].get("values", [])]
-                f_val = check_values[5] if len(check_values) > 5 else ""
-                if not f_val.strip():
+                row_submitter_id = check_values[10] if len(check_values) > 10 else ""
+                if row_submitter_id and row_submitter_id == data.get('submitter_id', ''):
                     existing_row = pending_row_index
 
         # 2. 如果前端没有待提交行，再按型号查找
