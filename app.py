@@ -72,35 +72,38 @@ def read_sheet_range(sheet_id, range_str):
     resp = requests.get(url, headers=get_headers(), timeout=30)
     if resp.status_code == 200:
         data = resp.json()
-        result = data.get("gridData", {})
-        if not result or (isinstance(result, dict) and "_debug" in result):
-            # 返回原始响应的keys用于debug
-            return {"_debug": {"keys": list(data.keys()), "raw_preview": str(data)[:500]}}
-        return result
-    return {"_debug": {"status": resp.status_code, "error": resp.text[:200]}}
+        return data.get("gridData", {})
+    return {}
 
 
 def get_next_empty_row(sheet_id):
     """获取表格下一个空行号（1-based），从第3行开始扫描（跳过表头第1-2行）"""
-    # 读取前200行A列数据
-    grid_data = read_sheet_range(sheet_id, "A1:A200")
-    rows = grid_data.get("rows", [])
+    # 分批读取，每批50行
+    batch_size = 50
+    for offset in range(0, 200, batch_size):
+        start = offset + 1  # 1-based
+        end = offset + batch_size
+        range_str = f"A{start}:A{end}"
+        grid_data = read_sheet_range(sheet_id, range_str)
+        rows = grid_data.get("rows", [])
+        
+        for i in range(len(rows)):
+            row = rows[i]
+            actual_row = start + i  # 1-based实际行号
+            if actual_row < 3:
+                continue  # 跳过表头
+            has_data = False
+            for v in row.get("values", []):
+                cv = v.get("cellValue")
+                if cv:
+                    text = parse_cell_value(cv)
+                    if text.strip():
+                        has_data = True
+                        break
+            if not has_data:
+                return actual_row
     
-    for i in range(2, len(rows)):  # 从第3行开始（0-based index 2）
-        row = rows[i]
-        has_data = False
-        for v in row.get("values", []):
-            cv = v.get("cellValue")
-            if cv:
-                text = parse_cell_value(cv)
-                if text.strip():
-                    has_data = True
-                    break
-        if not has_data:
-            return i + 1  # 返回1-based行号
-    
-    # 如果前200行都满了，返回第201行
-    return len(rows) + 1 if len(rows) >= 2 else 3
+    return 201  # 如果前200行都满了
 
 
 def batch_update(requests_body):
@@ -108,6 +111,14 @@ def batch_update(requests_body):
     url = f"{BASE_URL}/files/{FILE_ID}/batchUpdate"
     resp = requests.post(url, headers=get_headers(), json=requests_body)
     return resp
+
+
+def is_date_string(value):
+    """判断字符串是否为日期格式 YYYY-MM-DD"""
+    if not value:
+        return False
+    import re
+    return bool(re.match(r'^\d{4}-\d{2}-\d{2}$', str(value).strip()))
 
 
 def write_order_row(row_index_0based, model, tonnage, customer, expected_date, queue_date, submitter, remark, serial_no, submitter_id, submit_time):
@@ -122,8 +133,10 @@ def write_order_row(row_index_0based, model, tonnage, customer, expected_date, q
         build_cell_value(expected_date, is_date=True),  # D: 期望发货日期
     ]
     # F-L列 (5-11) - 跳过E列
+    # F列智能判断：如果是日期格式用日期写入，否则用文本写入
+    queue_date_is_date = is_date_string(queue_date)
     values_right = [
-        build_cell_value(queue_date, is_date=True),     # F: 输入发货日期排队
+        build_cell_value(queue_date, is_date=queue_date_is_date),  # F: 输入发货日期排队
         build_cell_value(submitter),       # G: 提交人
         build_cell_value(remark),          # H: 备注
         build_cell_value(serial_no),       # I: 序号
@@ -212,21 +225,35 @@ def calculate_date():
         expected_date = data.get('expected_date', '')
 
         # 1. 先检查是否已有匹配的待提交行（A列型号匹配且F列为空）
-        grid_data = read_sheet_range(SHEET_ID, "A1:L200")
-        rows = grid_data.get("rows", [])
+        # 分批读取，避免RangeSize过大
         existing_row = 0  # 1-based
+        batch_size = 50
+        for offset in range(0, 200, batch_size):
+            start = offset + 1
+            end = offset + batch_size
+            range_str = f"A{start}:F{end}"
+            grid_data = read_sheet_range(SHEET_ID, range_str)
+            rows = grid_data.get("rows", [])
 
-        for i in range(2, len(rows)):  # 从第3行开始
-            row = rows[i]
-            values = row.get("values", [])
-            row_data = [parse_cell_value(v.get("cellValue")) for v in values]
-            
-            # 检查A列型号匹配
-            a_val = row_data[0] if len(row_data) > 0 else ""
-            f_val = row_data[5] if len(row_data) > 5 else ""  # F列排队日期
-            
-            if a_val == model and not f_val.strip():
-                existing_row = i + 1  # 1-based
+            for i in range(len(rows)):
+                row = rows[i]
+                actual_row = start + i  # 1-based
+                if actual_row < 3:
+                    continue  # 跳过表头
+                values = row.get("values", [])
+                row_data = [parse_cell_value(v.get("cellValue")) for v in values]
+
+                # 检查A列型号匹配
+                a_val = row_data[0] if len(row_data) > 0 else ""
+                f_val = row_data[5] if len(row_data) > 5 else ""  # F列排队日期
+
+                if a_val == model and not f_val.strip():
+                    existing_row = actual_row
+                    break
+
+            if existing_row > 0:
+                break
+            if len(rows) < batch_size:
                 break
 
         if existing_row > 0:
@@ -375,20 +402,24 @@ def get_orders():
     try:
         submitter_id = request.args.get('submitter_id', '')
 
-        grid_data = read_sheet_range(SHEET_ID, "A1:L1000")
-        rows = grid_data.get("rows", [])
-        
-        debug_info = {
-            "grid_data_keys": list(grid_data.keys()) if grid_data else "empty",
-            "total_rows": len(rows),
-            "first_row_values": len(rows[0].get("values", [])) if rows else 0,
-            "raw_preview": str(grid_data.get("_debug", {}))[:300] if "_debug" in grid_data else "has gridData"
-        }
-        
+        # 分批读取表格数据，每批50行，避免RangeSize过大导致400001错误
+        all_rows = []
+        batch_size = 50
+        for offset in range(0, 200, batch_size):
+            start = offset + 1
+            end = offset + batch_size
+            range_str = f"A{start}:L{end}"
+            grid_data = read_sheet_range(SHEET_ID, range_str)
+            rows = grid_data.get("rows", [])
+            all_rows.extend(rows)
+            # 如果返回行数少于batch_size，说明已到末尾
+            if len(rows) < batch_size:
+                break
+
         orders = []
         today = datetime.now().date()
 
-        for i, row in enumerate(rows):
+        for i, row in enumerate(all_rows):
             if i == 0:
                 continue  # 跳过表头
 
@@ -423,7 +454,7 @@ def get_orders():
                     if queue_date < today:
                         continue
                 except:
-                    pass
+                    pass  # 非日期格式（如"请联系商务支持"）不检查过期
 
             order = {
                 "row_index": i + 1,  # 1-based
@@ -442,9 +473,9 @@ def get_orders():
             }
             orders.append(order)
 
-        return jsonify({"success": True, "orders": orders, "debug": debug_info})
+        return jsonify({"success": True, "orders": orders})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e), "traceback": str(e.__traceback__)})
+        return jsonify({"success": False, "error": str(e)})
 
 
 @app.route('/api/orders/<int:row_index>', methods=['PUT'])
