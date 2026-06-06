@@ -94,6 +94,23 @@ body {
     margin-bottom: 20px;
 }
 
+.form-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 0;
+}
+
+.form-row .form-group {
+    flex: 1;
+    margin-bottom: 20px;
+}
+
+.form-row .form-col input,
+.form-row .form-col select {
+    padding: 10px 8px;
+    font-size: 14px;
+}
+
 .form-group label {
     display: block;
     margin-bottom: 8px;

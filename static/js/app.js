@@ -384,7 +384,7 @@ function setupEditQueueDateListener() {
             const hint = document.getElementById('editDateHint');
             if (calcDate && calcDate.match(/\d{4}-\d{2}-\d{2}/) && queueDate) {
                 if (new Date(queueDate) < new Date(calcDate)) {
-                    hint.textContent = '排队日期早于可发货日期，请点击"重新计算可发货日期"';
+                    hint.textContent = '排队日期不能早于可发货日期';
                     hint.style.color = '#e74c3c';
                 } else {
                     hint.textContent = '';
@@ -405,7 +405,7 @@ async function handleUpdateOrder(e) {
     // 校验：排队日期不能早于可发货日期
     if (calcDate && calcDate.match(/\d{4}-\d{2}-\d{2}/) && queueDate) {
         if (new Date(queueDate) < new Date(calcDate)) {
-            showToast('排队日期早于可发货日期，请先点击"重新计算可发货日期"', 'error');
+            showToast('排队日期不能早于可发货日期', 'error');
             return;
         }
     }

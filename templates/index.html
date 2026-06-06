@@ -22,21 +22,21 @@
 
         <div id="createTab" class="tab-content active">
             <form id="orderForm" class="order-form">
-                <div class="form-group">
-                    <label for="model">型号 <span class="required">*</span></label>
-                    <select id="model" name="model" required>
-                        <option value="">请选择型号</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="tonnage">吨位 <span class="required">*</span></label>
-                    <input type="number" id="tonnage" name="tonnage" step="0.01" required placeholder="请输入吨位">
-                </div>
-
-                <div class="form-group">
-                    <label for="customer">客户 <span class="required">*</span></label>
-                    <input type="text" id="customer" name="customer" required placeholder="请输入客户名称">
+                <div class="form-row">
+                    <div class="form-group form-col">
+                        <label for="model">型号 <span class="required">*</span></label>
+                        <select id="model" name="model" required>
+                            <option value="">请选择</option>
+                        </select>
+                    </div>
+                    <div class="form-group form-col">
+                        <label for="tonnage">吨位 <span class="required">*</span></label>
+                        <input type="number" id="tonnage" name="tonnage" step="0.01" required placeholder="吨位">
+                    </div>
+                    <div class="form-group form-col">
+                        <label for="customer">客户 <span class="required">*</span></label>
+                        <input type="text" id="customer" name="customer" required placeholder="客户">
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -86,21 +86,21 @@
             </div>
             <form id="editForm" class="order-form">
                 <input type="hidden" id="editRowIndex">
-                <div class="form-group">
-                    <label for="editModel">型号</label>
-                    <select id="editModel" name="editModel" required>
-                        <option value="">请选择型号</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="editTonnage">吨位 (只能改小)</label>
-                    <input type="number" id="editTonnage" name="editTonnage" step="0.01" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="editCustomer">客户</label>
-                    <input type="text" id="editCustomer" name="editCustomer" required>
+                <div class="form-row">
+                    <div class="form-group form-col">
+                        <label for="editModel">型号</label>
+                        <select id="editModel" name="editModel" required>
+                            <option value="">请选择</option>
+                        </select>
+                    </div>
+                    <div class="form-group form-col">
+                        <label for="editTonnage">吨位</label>
+                        <input type="number" id="editTonnage" name="editTonnage" step="0.01" required placeholder="吨位">
+                    </div>
+                    <div class="form-group form-col">
+                        <label for="editCustomer">客户</label>
+                        <input type="text" id="editCustomer" name="editCustomer" required placeholder="客户">
+                    </div>
                 </div>
 
                 <div class="form-group">
