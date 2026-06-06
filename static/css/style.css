@@ -149,6 +149,12 @@ body {
     transform: scale(0.98);
 }
 
+.date-hint {
+    font-size: 12px;
+    margin-top: 6px;
+    min-height: 18px;
+}
+
 .form-actions {
     display: flex;
     gap: 12px;

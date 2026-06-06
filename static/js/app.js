@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initUser();
     loadModels();
     setupEventListeners();
+    setupEditQueueDateListener();
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('expectedDate').value = today;
     document.getElementById('queueDate').value = today;
@@ -115,12 +116,18 @@ async function calculateDate() {
                 hint.disabled = true;
                 hint.style.cssText = 'width:100%;padding:12px 15px;border:1px solid #ddd;border-radius:8px;font-size:15px;background:#fff0f0;color:#e74c3c;font-weight:500;';
                 parent.insertBefore(hint, queueDateInput.nextSibling);
-            } else {
-                // 是有效日期，恢复date input
+            } else if (isDate) {
+                // 是有效日期，F列排队日期默认等于E列可发货日期
                 queueDateInput.style.display = '';
                 queueDateInput.disabled = false;
                 queueDateInput.style.background = '';
                 queueDateInput.style.color = '';
+                queueDateInput.value = calcDate; // 默认等于可发货日期
+                const oldHint = queueDateInput.parentNode.querySelector('.queue-date-hint');
+                if (oldHint) oldHint.remove();
+            } else {
+                queueDateInput.style.display = '';
+                queueDateInput.disabled = false;
                 const oldHint = queueDateInput.parentNode.querySelector('.queue-date-hint');
                 if (oldHint) oldHint.remove();
             }
@@ -314,7 +321,11 @@ async function openEditModal(rowIndex) {
                 document.getElementById('editTonnage').value = order.tonnage || '';
                 document.getElementById('editCustomer').value = order.customer || '';
                 document.getElementById('editExpectedDate').value = order.expected_date || '';
+                document.getElementById('editCalculatedDate').value = order.calculated_date || '';
                 document.getElementById('editQueueDate').value = order.queue_date || '';
+                // 清除提示
+                document.getElementById('editDateHint').textContent = '';
+                document.getElementById('editDateHint').style.color = '';
                 document.getElementById('editModal').classList.add('show');
             }
         }
@@ -327,15 +338,91 @@ function closeEditModal() {
     document.getElementById('editModal').classList.remove('show');
 }
 
+async function calculateDateForEdit() {
+    const model = document.getElementById('editModel').value;
+    const tonnage = document.getElementById('editTonnage').value;
+    const customer = document.getElementById('editCustomer').value;
+    const expectedDate = document.getElementById('editExpectedDate').value;
+    if (!model || !tonnage || !customer || !expectedDate) {
+        showToast('请先填写型号、吨位、客户和期望发货日期', 'error');
+        return;
+    }
+
+    const calcBtn = document.getElementById('editCalcBtn');
+    calcBtn.textContent = '计算中...';
+    calcBtn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/calculate-date`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model, tonnage, customer, expected_date: expectedDate })
+        });
+        const data = await response.json();
+        if (data.success) {
+            const calcDate = data.calculated_date || '';
+            document.getElementById('editCalculatedDate').value = calcDate || '计算中...';
+
+            const isDate = calcDate && calcDate.match(/\d{4}-\d{2}-\d{2}/);
+            if (isDate) {
+                // 重新计算后，排队日期默认等于新的可发货日期
+                document.getElementById('editQueueDate').value = calcDate;
+                document.getElementById('editDateHint').textContent = '';
+            }
+            showToast('可发货日期已更新', 'success');
+        } else {
+            showToast('计算失败: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showToast('网络错误', 'error');
+    } finally {
+        calcBtn.textContent = '重新计算可发货日期';
+        calcBtn.disabled = false;
+    }
+}
+
+// 监听修改弹窗中排队日期变更，如果改早了提示重新计算
+function setupEditQueueDateListener() {
+    const editQueueDate = document.getElementById('editQueueDate');
+    if (editQueueDate) {
+        editQueueDate.addEventListener('change', function() {
+            const calcDate = document.getElementById('editCalculatedDate').value;
+            const queueDate = this.value;
+            const hint = document.getElementById('editDateHint');
+            if (calcDate && calcDate.match(/\d{4}-\d{2}-\d{2}/) && queueDate) {
+                if (new Date(queueDate) < new Date(calcDate)) {
+                    hint.textContent = '排队日期早于可发货日期，请点击"重新计算可发货日期"';
+                    hint.style.color = '#e74c3c';
+                } else {
+                    hint.textContent = '';
+                }
+            } else {
+                hint.textContent = '';
+            }
+        });
+    }
+}
+
 async function handleUpdateOrder(e) {
     e.preventDefault();
     const rowIndex = document.getElementById('editRowIndex').value;
+    const queueDate = document.getElementById('editQueueDate').value;
+    const calcDate = document.getElementById('editCalculatedDate').value;
+
+    // 校验：排队日期不能早于可发货日期
+    if (calcDate && calcDate.match(/\d{4}-\d{2}-\d{2}/) && queueDate) {
+        if (new Date(queueDate) < new Date(calcDate)) {
+            showToast('排队日期早于可发货日期，请先点击"重新计算可发货日期"', 'error');
+            return;
+        }
+    }
+
     const orderData = {
         model: document.getElementById('editModel').value,
         tonnage: document.getElementById('editTonnage').value,
         customer: document.getElementById('editCustomer').value,
         expected_date: document.getElementById('editExpectedDate').value,
-        queue_date: document.getElementById('editQueueDate').value,
+        queue_date: queueDate,
         submitter: currentUser.name,
         submitter_id: currentUser.id
     };
