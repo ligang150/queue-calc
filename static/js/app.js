@@ -1,6 +1,7 @@
 let currentUser = { name: '测试用户', id: 'test_user_001' };
 let allOrders = [];
 let modelOptions = [];
+let pendingRowIndex = 0; // 由calculate_date返回的row_index
 const API_BASE = '';
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -94,12 +95,15 @@ async function calculateDate() {
         const data = await response.json();
         if (data.success) {
             document.getElementById('calculatedDate').value = data.calculated_date || '计算中...';
-            showToast('可发货日期已更新', 'success');
+            pendingRowIndex = data.row_index || 0; // 保存行号供正式提交使用
+            showToast('可发货日期已更新' + (pendingRowIndex ? ' (行号:' + pendingRowIndex + ')' : ''), 'success');
         } else {
             showToast('计算失败: ' + data.error, 'error');
+            pendingRowIndex = 0;
         }
     } catch (error) {
         showToast('网络错误', 'error');
+        pendingRowIndex = 0;
     } finally {
         calcBtn.textContent = '计算可发货日期';
         calcBtn.disabled = false;
@@ -115,7 +119,8 @@ async function handleCreateOrder(e) {
         expected_date: document.getElementById('expectedDate').value,
         queue_date: document.getElementById('queueDate').value,
         submitter: currentUser.name,
-        submitter_id: currentUser.id
+        submitter_id: currentUser.id,
+        row_index: pendingRowIndex // 如果有预计算行号，则更新该行
     };
 
     try {
@@ -132,6 +137,7 @@ async function handleCreateOrder(e) {
             document.getElementById('expectedDate').value = today;
             document.getElementById('queueDate').value = today;
             document.getElementById('calculatedDate').value = '';
+            pendingRowIndex = 0; // 清空
         } else {
             showToast('创建失败: ' + data.error, 'error');
         }

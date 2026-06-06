@@ -173,7 +173,7 @@ def get_models():
 
 @app.route('/api/calculate-date', methods=['POST'])
 def calculate_date():
-    """计算可发货日期：写入临时数据 → 读取E列公式结果 → 删除临时行"""
+    """计算可发货日期：先写入数据到表格末尾（让E列公式自动计算），然后读取结果"""
     try:
         data = request.json
         model = data.get('model', '')
@@ -181,24 +181,28 @@ def calculate_date():
         customer = data.get('customer', '')
         expected_date = data.get('expected_date', '')
 
-        # 获取当前最后一行
+        # 获取当前最后一行（已有数据的最后一行）
         last_row = get_row_count(SHEET_ID)
-        write_row_idx = last_row  # 0-based，写在最后一行之后
+        write_row_idx = last_row  # 0-based，写在最后一行之后（新行）
+        serial_no = write_row_idx
 
-        # 写入临时数据（不含序号等）
+        # 写入数据到表格末尾（让E列公式自动计算）
+        # 排队日期、提交人等先留空，等用户正式提交时再更新
         remark = f"{tonnage}{customer}"
         resp = write_order_row(
             write_row_idx, model, tonnage, customer, expected_date,
-            "", "计算中", remark, "", "", ""
+            "", "", remark, str(serial_no), "", ""
         )
         result = resp.json()
 
         if "responses" not in result:
-            return jsonify({"success": False, "error": f"写入临时数据失败: {json.dumps(result, ensure_ascii=False)}"})
+            return jsonify({"success": False, "error": f"写入数据失败: {json.dumps(result, ensure_ascii=False)}"})
+
+        # 等待公式计算
+        import time
+        time.sleep(2)
 
         # 读取E列计算结果
-        import time
-        time.sleep(1)  # 等待公式计算
         grid_data = read_sheet_range(SHEET_ID, f"E{write_row_idx + 1}:E{write_row_idx + 1}")
         rows = grid_data.get("rows", [])
         calculated_date = ""
@@ -208,17 +212,19 @@ def calculate_date():
                 if cv:
                     calculated_date = parse_cell_value(cv)
 
-        # 删除临时行（行号从1开始）
-        delete_row(write_row_idx + 1)
-
-        return jsonify({"success": True, "calculated_date": calculated_date})
+        # 返回计算结果和行号，前端正式提交时用这个行号更新
+        return jsonify({
+            "success": True,
+            "calculated_date": calculated_date,
+            "row_index": write_row_idx + 1  # 1-based行号，供正式提交时更新
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
 
 @app.route('/api/orders', methods=['POST'])
 def create_order():
-    """创建订单"""
+    """创建订单：如果有row_index则更新已有行，否则新建行"""
     try:
         data = request.json
         model = data.get('model', '')
@@ -228,18 +234,32 @@ def create_order():
         queue_date = data.get('queue_date', '')
         submitter = data.get('submitter', '未知用户')
         submitter_id = data.get('submitter_id', '')
+        row_index = data.get('row_index', 0)  # 1-based，由calculate_date返回
 
         remark = f"{tonnage}{customer}"
         submit_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 获取当前最后一行
-        last_row = get_row_count(SHEET_ID)
-        write_row_idx = last_row  # 0-based
-        serial_no = write_row_idx  # 序号
+        if row_index > 0:
+            # 更新已有行（由calculate_date创建的行）
+            write_row_idx = row_index - 1  # 转为0-based
+            # 读取原序号，保持不变
+            grid_data = read_sheet_range(SHEET_ID, f"I{row_index}:I{row_index}")
+            rows = grid_data.get("rows", [])
+            serial_no = str(write_row_idx)
+            if rows:
+                for v in rows[0].get("values", []):
+                    cv = v.get("cellValue")
+                    if cv:
+                        serial_no = parse_cell_value(cv) or str(write_row_idx)
+        else:
+            # 新建行
+            last_row = get_row_count(SHEET_ID)
+            write_row_idx = last_row
+            serial_no = str(write_row_idx)
 
         resp = write_order_row(
             write_row_idx, model, tonnage, customer, expected_date,
-            queue_date, submitter, remark, str(serial_no), submitter_id, submit_time
+            queue_date, submitter, remark, serial_no, submitter_id, submit_time
         )
         result = resp.json()
 
