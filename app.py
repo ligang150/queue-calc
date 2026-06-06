@@ -189,7 +189,7 @@ def calculate_date():
         remark = f"{tonnage}{customer}"
         resp = write_order_row(
             write_row_idx, model, tonnage, customer, expected_date,
-            "", "计算中", "", remark, "", "", ""
+            "", "计算中", remark, "", "", ""
         )
         result = resp.json()
 
