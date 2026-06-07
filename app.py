@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, abort
+from flask import Flask, render_template, request, jsonify, abort, redirect, session, make_response
 from flask_cors import CORS
 import requests
 import json
@@ -8,56 +8,136 @@ import functools
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
-CORS(app)
-
-# ============ 授权中间件 ============
-
-def require_auth(f):
-    """装饰器：检查请求是否携带有效的腾讯表格授权信息"""
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        # 从请求头获取授权信息
-        access_token = request.headers.get('X-Access-Token') or ACCESS_TOKEN
-        open_id = request.headers.get('X-Open-Id') or OPEN_ID
-        client_id = request.headers.get('X-Client-Id') or CLIENT_ID
-
-        if not access_token or not open_id:
-            return jsonify({"success": False, "error": "未授权，请先登录腾讯文档"}), 401
-
-        # 验证该用户是否有权限访问此表格
-        headers = {
-            "Content-Type": "application/json",
-            "Access-Token": access_token,
-            "Open-Id": open_id,
-            "Client-Id": client_id
-        }
-        try:
-            resp = requests.get(
-                f"{BASE_URL}/files/{FILE_ID}/permissions",
-                headers=headers,
-                timeout=10
-            )
-            if resp.status_code != 200:
-                return jsonify({"success": False, "error": "无权访问此表格，请联系管理员授权"}), 403
-        except Exception as e:
-            return jsonify({"success": False, "error": "授权验证失败: " + str(e)}), 403
-
-        # 将授权信息存入请求上下文，供后续使用
-        request.auth_headers = headers
-        return f(*args, **kwargs)
-    return decorated
+CORS(app, supports_credentials=True)
 
 # 腾讯表格配置
 FILE_ID = "DRkR6aXhGcWxLYVFR"
 SHEET_ID = "000007"       # 自助排队表格
 MODEL_SHEET_ID = "000008"  # 牌号表格
 
-# 腾讯开放平台配置
+# 腾讯开放平台配置（OAuth应用）
+APP_CLIENT_ID = os.environ.get('APP_CLIENT_ID', 'da815d1227294457b43413bdc16e3e90')
+APP_CLIENT_SECRET = os.environ.get('APP_CLIENT_SECRET', '')
+
+# 服务端配置（用于API调用）
 CLIENT_ID = os.environ.get('CLIENT_ID', 'da815d1227294457b43413bdc16e3e90')
 ACCESS_TOKEN = os.environ.get('ACCESS_TOKEN', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbHQiOiJkYTgxNWQxMjI3Mjk0NDU3YjQzNDEzYmRjMTZlM2U5MCIsInR5cCI6MSwiZXhwIjoxNzgyMDk0NTcyLjEwODc1MywiaWF0IjoxNzc5NTAyNTcyLjEwODc1Mywic3ViIjoiOWJjMTcyZTUzMzgxNDdkOGEzNWMxNDM4ZWE4ZDE1NzcifQ.rm3BIdD1V7FrCwdToT2arErs06xWF7hTqAh0KsCKsdw')
 OPEN_ID = os.environ.get('OPEN_ID', '9bc172e5338147d8a35c1438ea8d1577')
 
 BASE_URL = "https://docs.qq.com/openapi/spreadsheet/v3"
+OAUTH_BASE = "https://docs.qq.com/oauth/v2"
+
+# 回调地址（需要和腾讯文档开放平台应用配置一致）
+REDIRECT_URI = os.environ.get('REDIRECT_URI', 'https://queue-system-b.onrender.com/auth/callback')
+
+
+# ============ 授权中间件 ============
+
+def require_auth(f):
+    """装饰器：检查session中是否有有效的用户授权信息"""
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        user_access_token = session.get('user_access_token')
+        user_open_id = session.get('user_open_id')
+
+        if not user_access_token or not user_open_id:
+            return jsonify({"success": False, "error": "未授权", "need_auth": True}), 401
+
+        # 用用户的token和open_id构建请求头
+        request.auth_headers = {
+            "Content-Type": "application/json",
+            "Access-Token": user_access_token,
+            "Open-Id": user_open_id,
+            "Client-Id": APP_CLIENT_ID
+        }
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ============ OAuth 路由 ============
+
+@app.route('/auth/login')
+def auth_login():
+    """跳转到腾讯文档OAuth授权页面"""
+    auth_url = (
+        f"{OAUTH_BASE}/authorize"
+        f"?client_id={APP_CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&response_type=code"
+        f"&scope=all"
+        f"&state=queue_system"
+    )
+    return redirect(auth_url)
+
+
+@app.route('/auth/callback')
+def auth_callback():
+    """OAuth回调：用code换取access_token和open_id"""
+    code = request.args.get('code')
+    if not code:
+        return redirect('/?auth_error=no_code')
+
+    try:
+        # 用code换取token
+        token_resp = requests.get(f"{OAUTH_BASE}/token", params={
+            'client_id': APP_CLIENT_ID,
+            'client_secret': APP_CLIENT_SECRET,
+            'redirect_uri': REDIRECT_URI,
+            'grant_type': 'authorization_code',
+            'code': code
+        }, timeout=30)
+
+        token_data = token_resp.json()
+        user_access_token = token_data.get('access_token')
+        user_open_id = token_data.get('user_id')
+
+        if not user_access_token or not user_open_id:
+            return redirect('/?auth_error=token_failed')
+
+        # 获取用户昵称
+        nick = ''
+        try:
+            userinfo_resp = requests.get(f"{OAUTH_BASE}/userinfo", params={
+                'access_token': user_access_token
+            }, timeout=10)
+            userinfo = userinfo_resp.json()
+            nick = userinfo.get('data', {}).get('nick', '')
+        except:
+            pass
+
+        # 存入session
+        session['user_access_token'] = user_access_token
+        session['user_open_id'] = user_open_id
+        session['user_nick'] = nick
+
+        # 重定向到首页，带上用户信息
+        return redirect(f"/?nick={nick}&open_id={user_open_id}")
+
+    except Exception as e:
+        return redirect(f'/?auth_error={str(e)}')
+
+
+@app.route('/auth/logout')
+def auth_logout():
+    """退出登录"""
+    session.clear()
+    return redirect('/')
+
+
+@app.route('/auth/check')
+def auth_check():
+    """检查当前用户是否已授权"""
+    user_access_token = session.get('user_access_token')
+    user_open_id = session.get('user_open_id')
+    user_nick = session.get('user_nick', '')
+
+    if user_access_token and user_open_id:
+        return jsonify({
+            "authorized": True,
+            "nick": user_nick,
+            "open_id": user_open_id
+        })
+    return jsonify({"authorized": False})
 
 
 def get_headers():

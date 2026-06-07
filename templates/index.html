@@ -11,14 +11,9 @@
         <div class="auth-box">
             <div class="auth-icon">🔒</div>
             <h2>需要授权访问</h2>
-            <p>本系统仅限腾讯表格授权用户访问</p>
-            <p class="auth-hint">请在下方输入您的腾讯文档授权信息</p>
-            <div class="auth-form">
-                <input type="text" id="authAccessToken" placeholder="Access-Token">
-                <input type="text" id="authOpenId" placeholder="Open-Id">
-                <input type="text" id="authClientId" placeholder="Client-Id">
-                <button onclick="doAuth()">授权登录</button>
-            </div>
+            <p>本系统仅限腾讯表格授权用户使用</p>
+            <p class="auth-hint">请点击下方按钮，使用微信扫码授权登录</p>
+            <a href="/auth/login" class="auth-btn">微信扫码授权登录</a>
             <p class="auth-error" id="authError"></p>
         </div>
     </div>

@@ -4,50 +4,39 @@ let modelOptions = [];
 let pendingRowIndex = 0; // 由calculate_date返回的row_index
 const API_BASE = '';
 
-// 授权信息存储
-let authInfo = {
-    accessToken: localStorage.getItem('accessToken') || '',
-    openId: localStorage.getItem('openId') || '',
-    clientId: localStorage.getItem('clientId') || ''
-};
-
 document.addEventListener('DOMContentLoaded', function() {
-    initUser();
-    checkAuth();
-});
+    // 检查URL参数中是否有授权错误
+    const urlParams = new URLSearchParams(window.location.search);
+    const authError = urlParams.get('auth_error');
+    const nick = urlParams.get('nick');
+    const openId = urlParams.get('open_id');
 
-function checkAuth() {
-    // 检查是否有授权信息
-    if (!authInfo.accessToken || !authInfo.openId) {
-        showAuthOverlay();
+    if (authError) {
+        showAuthOverlay('授权失败，请重试');
         return;
     }
-    // 尝试调用API验证授权是否有效
-    fetch(`${API_BASE}/api/test-connection`, {
-        headers: {
-            'X-Access-Token': authInfo.accessToken,
-            'X-Open-Id': authInfo.openId,
-            'X-Client-Id': authInfo.clientId
-        }
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            hideAuthOverlay();
-            loadModels();
-            setupEventListeners();
-            setupEditQueueDateListener();
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('expectedDate').value = today;
-            document.getElementById('queueDate').value = today;
-        } else {
-            showAuthOverlay('授权已失效，请重新登录');
-        }
-    })
-    .catch(() => {
-        showAuthOverlay('授权验证失败，请重新登录');
-    });
-}
+
+    // 检查是否已授权（通过后端session）
+    fetch(`${API_BASE}/auth/check`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.authorized) {
+                hideAuthOverlay();
+                initUser(data.nick, data.open_id);
+                loadModels();
+                setupEventListeners();
+                setupEditQueueDateListener();
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('expectedDate').value = today;
+                document.getElementById('queueDate').value = today;
+            } else {
+                showAuthOverlay();
+            }
+        })
+        .catch(() => {
+            showAuthOverlay('网络错误，请重试');
+        });
+});
 
 function showAuthOverlay(errorMsg) {
     document.getElementById('authOverlay').style.display = 'flex';
@@ -60,33 +49,10 @@ function hideAuthOverlay() {
     document.getElementById('authOverlay').style.display = 'none';
 }
 
-function doAuth() {
-    const token = document.getElementById('authAccessToken').value.trim();
-    const openId = document.getElementById('authOpenId').value.trim();
-    const clientId = document.getElementById('authClientId').value.trim();
-
-    if (!token || !openId) {
-        document.getElementById('authError').textContent = 'Access-Token 和 Open-Id 不能为空';
-        return;
-    }
-
-    authInfo = { accessToken: token, openId: openId, clientId: clientId };
-    localStorage.setItem('accessToken', token);
-    localStorage.setItem('openId', openId);
-    localStorage.setItem('clientId', clientId);
-
-    checkAuth();
-}
-
-// 所有API请求都带上授权头
-function apiFetch(url, options = {}) {
-    options.headers = options.headers || {};
-    options.headers['X-Access-Token'] = authInfo.accessToken;
-    options.headers['X-Open-Id'] = authInfo.openId;
-    if (authInfo.clientId) {
-        options.headers['X-Client-Id'] = authInfo.clientId;
-    }
-    return fetch(url, options);
+function initUser(nick, openId) {
+    currentUser.name = nick || '用户';
+    currentUser.id = openId || 'unknown';
+    document.getElementById('userName').textContent = currentUser.name;
 }
 
 function initUser() {
@@ -102,7 +68,7 @@ function initUser() {
 
 async function loadModels() {
     try {
-        const response = await apiFetch(`${API_BASE}/api/models`);
+        const response = await fetch(`${API_BASE}/api/models`);
         const data = await response.json();
         if (data.success) {
             modelOptions = data.models;
@@ -170,7 +136,7 @@ async function calculateDate() {
     document.getElementById('calculatedDate').value = '计算中...';
 
     try {
-        const response = await apiFetch(`${API_BASE}/api/calculate-date`, {
+        const response = await fetch(`${API_BASE}/api/calculate-date`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model, tonnage, customer, expected_date: expectedDate, pending_row_index: pendingRowIndex, submitter_id: currentUser.id })
@@ -267,7 +233,7 @@ async function handleCreateOrder(e) {
     };
 
     try {
-        const response = await apiFetch(`${API_BASE}/api/orders`, {
+        const response = await fetch(`${API_BASE}/api/orders`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(orderData)
@@ -294,7 +260,7 @@ async function loadOrders() {
     ordersList.innerHTML = '<div class="loading">加载中...</div>';
 
     try {
-        const response = await apiFetch(`${API_BASE}/api/orders?submitter_id=${currentUser.id}`);
+        const response = await fetch(`${API_BASE}/api/orders?submitter_id=${currentUser.id}`);
         const data = await response.json();
         if (data.success) {
             allOrders = data.orders;
@@ -426,7 +392,7 @@ async function calculateDateForEdit() {
     const rowIndex = parseInt(document.getElementById('editRowIndex').value) || 0;
 
     try {
-        const response = await apiFetch(`${API_BASE}/api/calculate-date`, {
+        const response = await fetch(`${API_BASE}/api/calculate-date`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model, tonnage, customer, expected_date: expectedDate, pending_row_index: rowIndex })
@@ -496,7 +462,7 @@ async function handleUpdateOrder(e) {
     };
 
     try {
-        const response = await apiFetch(`${API_BASE}/api/orders/${rowIndex}`, {
+        const response = await fetch(`${API_BASE}/api/orders/${rowIndex}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(orderData)
@@ -517,7 +483,7 @@ async function handleUpdateOrder(e) {
 async function deleteOrder(rowIndex) {
     if (!confirm('确定要删除这个订单吗？')) return;
     try {
-        const response = await apiFetch(`${API_BASE}/api/orders/${rowIndex}`, { method: 'DELETE' });
+        const response = await fetch(`${API_BASE}/api/orders/${rowIndex}`, { method: 'DELETE' });
         const data = await response.json();
         if (data.success) {
             showToast('订单删除成功！', 'success');

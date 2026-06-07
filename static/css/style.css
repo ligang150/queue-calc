@@ -199,22 +199,10 @@ body {
     margin-bottom: 20px;
 }
 
-.auth-form {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 16px;
-}
-
-.auth-form input {
-    padding: 12px 15px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    font-size: 14px;
-}
-
-.auth-form button {
-    padding: 14px;
+.auth-btn {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 14px 32px;
     background: #667eea;
     color: white;
     border: none;
@@ -222,6 +210,7 @@ body {
     font-size: 16px;
     font-weight: 500;
     cursor: pointer;
+    text-decoration: none;
 }
 
 .auth-error {
