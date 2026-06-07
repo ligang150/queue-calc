@@ -1,13 +1,51 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, abort
 from flask_cors import CORS
 import requests
 import json
 import os
 from datetime import datetime
+import functools
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 CORS(app)
+
+# ============ 授权中间件 ============
+
+def require_auth(f):
+    """装饰器：检查请求是否携带有效的腾讯表格授权信息"""
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        # 从请求头获取授权信息
+        access_token = request.headers.get('X-Access-Token') or ACCESS_TOKEN
+        open_id = request.headers.get('X-Open-Id') or OPEN_ID
+        client_id = request.headers.get('X-Client-Id') or CLIENT_ID
+
+        if not access_token or not open_id:
+            return jsonify({"success": False, "error": "未授权，请先登录腾讯文档"}), 401
+
+        # 验证该用户是否有权限访问此表格
+        headers = {
+            "Content-Type": "application/json",
+            "Access-Token": access_token,
+            "Open-Id": open_id,
+            "Client-Id": client_id
+        }
+        try:
+            resp = requests.get(
+                f"{BASE_URL}/files/{FILE_ID}/permissions",
+                headers=headers,
+                timeout=10
+            )
+            if resp.status_code != 200:
+                return jsonify({"success": False, "error": "无权访问此表格，请联系管理员授权"}), 403
+        except Exception as e:
+            return jsonify({"success": False, "error": "授权验证失败: " + str(e)}), 403
+
+        # 将授权信息存入请求上下文，供后续使用
+        request.auth_headers = headers
+        return f(*args, **kwargs)
+    return decorated
 
 # 腾讯表格配置
 FILE_ID = "DRkR6aXhGcWxLYVFR"
@@ -23,6 +61,9 @@ BASE_URL = "https://docs.qq.com/openapi/spreadsheet/v3"
 
 
 def get_headers():
+    """获取请求头，优先使用请求上下文中的用户授权信息"""
+    if hasattr(request, 'auth_headers'):
+        return request.auth_headers
     return {
         "Content-Type": "application/json",
         "Access-Token": ACCESS_TOKEN,
@@ -201,6 +242,7 @@ def index():
 
 
 @app.route('/api/models', methods=['GET'])
+@require_auth
 def get_models():
     """获取型号列表（从牌号表格A列）"""
     try:
@@ -220,6 +262,7 @@ def get_models():
 
 
 @app.route('/api/calculate-date', methods=['POST'])
+@require_auth
 def calculate_date():
     """计算可发货日期：先检查是否有匹配的待提交行，有则复用，无则写入新行"""
     try:
@@ -352,6 +395,7 @@ def calculate_date():
 
 
 @app.route('/api/orders', methods=['POST'])
+@require_auth
 def create_order():
     """创建订单：如果有row_index则更新已有行，否则新建行"""
     try:
@@ -405,6 +449,7 @@ def create_order():
 
 
 @app.route('/api/orders', methods=['GET'])
+@require_auth
 def get_orders():
     """获取订单列表"""
     try:
@@ -487,6 +532,7 @@ def get_orders():
 
 
 @app.route('/api/orders/<int:row_index>', methods=['PUT'])
+@require_auth
 def update_order(row_index):
     """修改订单"""
     try:
@@ -532,6 +578,7 @@ def update_order(row_index):
 
 
 @app.route('/api/orders/<int:row_index>', methods=['DELETE'])
+@require_auth
 def delete_order(row_index):
     """删除订单（row_index是1-based）"""
     try:
@@ -547,6 +594,7 @@ def delete_order(row_index):
 
 
 @app.route('/api/test-connection', methods=['GET'])
+@require_auth
 def test_connection():
     """测试腾讯表格连接"""
     try:

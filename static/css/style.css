@@ -152,6 +152,85 @@ body {
     min-height: 18px;
 }
 
+/* 授权弹窗 */
+.auth-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.auth-box {
+    background: white;
+    border-radius: 16px;
+    padding: 32px 24px;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+}
+
+.auth-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.auth-box h2 {
+    font-size: 20px;
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.auth-box p {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.auth-hint {
+    color: #999;
+    font-size: 12px;
+    margin-bottom: 20px;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.auth-form input {
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.auth-form button {
+    padding: 14px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.auth-error {
+    color: #e74c3c;
+    font-size: 13px;
+    margin-top: 12px;
+    min-height: 18px;
+}
+
 .form-actions {
     display: flex;
     gap: 12px;
