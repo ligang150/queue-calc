@@ -101,7 +101,7 @@ function doAuth() {
 }
 
 // 未提交订单的临时数据（页面关闭/刷新时清除）
-let draftOrder = null;
+let draftQueue = null;
 let lastActivityTime = Date.now();
 const IDLE_TIMEOUT = 10 * 60 * 1000; // 10分钟无操作强制退出
 
@@ -352,7 +352,7 @@ async function handleCreateOrder(e) {
         });
         const data = await response.json();
         if (data.success) {
-            showToast('订单创建成功！', 'success');
+            showToast('排队创建成功！', 'success');
             document.getElementById('orderForm').reset();
             // 重置为次日
             const tomorrow = new Date();
@@ -362,9 +362,9 @@ async function handleCreateOrder(e) {
             document.getElementById('queueDate').value = tomorrowStr;
             document.getElementById('calculatedDate').value = '';
             pendingRowIndex = 0; // 清空
-            draftOrder = null; // 清除草稿
+            draftQueue = null; // 清除草稿
         } else {
-            showToast('创建失败: ' + data.error, 'error');
+            showToast('排队创建失败: ' + data.error, 'error');
         }
     } catch (error) {
         showToast('网络错误', 'error');
@@ -408,7 +408,7 @@ function populateFilterModelSelect() {
 function renderOrders(orders) {
     const ordersList = document.getElementById('ordersList');
     if (orders.length === 0) {
-        ordersList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>暂无订单</p></div>';
+        ordersList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>暂无排队</p></div>';
         return;
     }
 
@@ -615,11 +615,11 @@ async function handleUpdateOrder(e) {
         });
         const data = await response.json();
         if (data.success) {
-            showToast('订单修改成功！', 'success');
+            showToast('排队修改成功！', 'success');
             closeEditModal();
             loadOrders();
         } else {
-            showToast('修改失败: ' + data.error, 'error');
+            showToast('排队修改失败: ' + data.error, 'error');
         }
     } catch (error) {
         showToast('网络错误', 'error');
@@ -627,15 +627,15 @@ async function handleUpdateOrder(e) {
 }
 
 async function deleteOrder(rowIndex) {
-    if (!confirm('确定要删除这个订单吗？')) return;
+    if (!confirm('确定要删除这个排队吗？')) return;
     try {
         const response = await apiFetch(`${API_BASE}/api/orders/${rowIndex}`, { method: 'DELETE' });
         const data = await response.json();
         if (data.success) {
-            showToast('订单删除成功！', 'success');
+            showToast('排队删除成功！', 'success');
             loadOrders();
         } else {
-            showToast('删除失败: ' + data.error, 'error');
+            showToast('排队删除失败: ' + data.error, 'error');
         }
     } catch (error) {
         showToast('网络错误', 'error');
@@ -662,10 +662,10 @@ window.onclick = function(event) {
     if (event.target === modal) closeEditModal();
 }
 
-// ============ 草稿管理：未提交订单退出页面时清除 ============
+// ============ 草稿管理：未提交排队退出页面时清除 ============
 
 function saveDraft() {
-    draftOrder = {
+    draftQueue = {
         model: document.getElementById('model').value,
         tonnage: document.getElementById('tonnage').value,
         customer: document.getElementById('customer').value,
@@ -679,7 +679,7 @@ function saveDraft() {
 function restoreDraft() {
     // 页面加载时不恢复草稿（刷新/重新进入 = 清除）
     // 只在页面内切换标签时保留
-    draftOrder = null;
+    draftQueue = null;
 }
 
 function hasUnsavedOrder() {
@@ -689,7 +689,7 @@ function hasUnsavedOrder() {
     return model || tonnage || customer;
 }
 
-// 页面关闭/刷新前，如果有未提交的订单，清除表单
+// 页面关闭/刷新前，如果有未提交的排队，清除表单
 window.addEventListener('beforeunload', function(e) {
     if (hasUnsavedOrder()) {
         // 清除表单数据，不保存
@@ -710,7 +710,7 @@ function startIdleTimer() {
             // 强制退出：清除密码并要求重新登录
             accessPassword = '';
             localStorage.removeItem('accessPassword');
-            // 如果有未提交订单，清除
+            // 如果有未提交的排队，清除
             if (hasUnsavedOrder()) {
                 document.getElementById('orderForm').reset();
             }

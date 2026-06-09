@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>销售订单排队系统</title>
+    <title>销售排队系统</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=9">
 </head>
 <body>
@@ -23,15 +23,15 @@
 
     <div class="container">
         <header class="header">
-            <h1>销售订单排队系统</h1>
+            <h1>销售排队系统</h1>
             <div class="user-info">
                 <span id="userName">未登录</span>
             </div>
         </header>
 
         <nav class="nav-tabs">
-            <button class="tab-btn active" onclick="showTab('create')">创建订单</button>
-            <button class="tab-btn" onclick="showTab('list')">订单明细</button>
+            <button class="tab-btn active" onclick="showTab('create')">订单排队</button>
+            <button class="tab-btn" onclick="showTab('list')">排队明细</button>
             <button class="tab-btn" onclick="showTab('feedback')">问题反馈</button>
         </nav>
 
@@ -70,7 +70,7 @@
                 </div>
 
                 <div class="form-actions">
-                    <button type="submit" class="btn-submit">提交订单</button>
+                    <button type="submit" class="btn-submit">提交排队</button>
                     <button type="reset" class="btn-reset">重置</button>
                 </div>
             </form>
