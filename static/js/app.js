@@ -79,7 +79,7 @@ function doAuth() {
 // 未提交订单的临时数据（页面关闭/刷新时清除）
 let draftOrder = null;
 let lastActivityTime = Date.now();
-const IDLE_TIMEOUT = 5 * 60 * 1000; // 5分钟无操作强制退出
+const IDLE_TIMEOUT = 10 * 60 * 1000; // 10分钟无操作强制退出
 
 function initApp() {
     document.getElementById('userName').textContent = currentUser.name;
