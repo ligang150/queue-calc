@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>销售订单排队系统</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4">
 </head>
 <body>
     <div id="authOverlay" class="auth-overlay" style="display:none;">
@@ -12,12 +12,23 @@
             <div class="auth-icon">🔒</div>
             <h2>需要授权访问</h2>
             <p>本系统仅限授权用户使用</p>
-            <p class="auth-hint">请输入您的微信名</p>
-            <div class="auth-form">
-                <input type="text" id="authWechatName" placeholder="请输入微信名" onkeydown="if(event.key==='Enter')doAuth()">
-                <button onclick="doAuth()">登 录</button>
+            <div class="auth-tabs">
+                <button class="auth-tab active" onclick="switchAuthTab('oauth')" id="tabOAuth">微信扫码授权</button>
+                <button class="auth-tab" onclick="switchAuthTab('manual')" id="tabManual">手动输入</button>
             </div>
-            <p class="auth-error" id="authError"></p>
+            <div id="oauthPanel" class="auth-panel active">
+                <p class="auth-hint">点击按钮，使用微信扫码自动获取昵称</p>
+                <button onclick="doOAuthAuth()" class="auth-btn-wechat">微信扫码授权</button>
+                <p class="auth-error" id="oauthError"></p>
+            </div>
+            <div id="manualPanel" class="auth-panel">
+                <p class="auth-hint">请输入您的微信名</p>
+                <div class="auth-form">
+                    <input type="text" id="authWechatName" placeholder="请输入微信名" onkeydown="if(event.key==='Enter')doAuth()">
+                    <button onclick="doAuth()">登 录</button>
+                </div>
+                <p class="auth-error" id="authError"></p>
+            </div>
         </div>
     </div>
 
@@ -143,6 +154,6 @@
 
     <div id="toast" class="toast"></div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=4"></script>
 </body>
 </html>

@@ -17,6 +17,41 @@ function apiFetch(url, options = {}) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // 检查URL参数（OAuth回调）
+    const urlParams = new URLSearchParams(window.location.search);
+    const nick = urlParams.get('nick');
+    const authError = urlParams.get('auth_error');
+
+    if (authError) {
+        showAuthOverlay();
+        document.getElementById('oauthError').textContent = '授权失败，请重试或使用手动输入';
+        return;
+    }
+
+    if (nick) {
+        // OAuth授权成功，用昵称作为微信名验证
+        wechatName = nick;
+        localStorage.setItem('wechatName', nick);
+        fetch(`${API_BASE}/auth/check`, {
+            headers: { 'X-Wechat-Name': wechatName }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.authorized) {
+                hideAuthOverlay();
+                currentUser.name = data.name || wechatName;
+                initApp();
+            } else {
+                wechatName = '';
+                localStorage.removeItem('wechatName');
+                showAuthOverlay();
+                document.getElementById('oauthError').textContent = '您的微信账号不在授权列表中';
+            }
+        })
+        .catch(() => showAuthOverlay('网络错误，请重试'));
+        return;
+    }
+
     if (wechatName) {
         // 有微信名，验证是否在白名单中
         fetch(`${API_BASE}/auth/check`, {
@@ -47,6 +82,28 @@ function showAuthOverlay(errorMsg) {
 
 function hideAuthOverlay() {
     document.getElementById('authOverlay').style.display = 'none';
+}
+
+function switchAuthTab(tab) {
+    document.getElementById('tabOAuth').classList.toggle('active', tab === 'oauth');
+    document.getElementById('tabManual').classList.toggle('active', tab === 'manual');
+    document.getElementById('oauthPanel').classList.toggle('active', tab === 'oauth');
+    document.getElementById('manualPanel').classList.toggle('active', tab === 'manual');
+}
+
+function doOAuthAuth() {
+    fetch(`${API_BASE}/auth/oauth-url`)
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.url) {
+            window.location.href = data.url;
+        } else {
+            document.getElementById('oauthError').textContent = data.error || '获取授权链接失败';
+        }
+    })
+    .catch(() => {
+        document.getElementById('oauthError').textContent = '网络错误';
+    });
 }
 
 function doAuth() {

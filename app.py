@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, abort, session
+from flask import Flask, render_template, request, jsonify, abort, session, redirect
 from flask_cors import CORS
 import requests
 import json
@@ -21,6 +21,12 @@ ACCESS_TOKEN = os.environ.get('ACCESS_TOKEN', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXV
 OPEN_ID = os.environ.get('OPEN_ID', '9bc172e5338147d8a35c1438ea8d1577')
 
 BASE_URL = "https://docs.qq.com/openapi/spreadsheet/v3"
+OAUTH_BASE = "https://docs.qq.com/oauth/v2"
+
+# OAuth 配置（需要用户在腾讯文档开放平台配置回调地址）
+APP_CLIENT_ID = os.environ.get('APP_CLIENT_ID', CLIENT_ID)
+APP_CLIENT_SECRET = os.environ.get('APP_CLIENT_SECRET', '')
+REDIRECT_URI = os.environ.get('REDIRECT_URI', 'https://queue-system-b.onrender.com/auth/callback')
 
 # ============ 授权：微信名白名单 ============
 
@@ -102,6 +108,81 @@ def auth_login():
     if wechat_name in whitelist:
         return jsonify({"success": True, "name": wechat_name})
     return jsonify({"success": False, "error": "无权访问，请联系管理员"})
+
+
+# ============ OAuth 路由 ============
+
+@app.route('/auth/oauth-url')
+def auth_oauth_url():
+    """获取腾讯文档OAuth授权链接"""
+    if not APP_CLIENT_SECRET:
+        return jsonify({"success": False, "error": "未配置Client Secret，请联系管理员"})
+    auth_url = (
+        f"{OAUTH_BASE}/authorize"
+        f"?client_id={APP_CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&response_type=code"
+        f"&scope=all"
+        f"&state=queue_system"
+    )
+    return jsonify({"success": True, "url": auth_url})
+
+
+@app.route('/auth/callback')
+def auth_callback():
+    """OAuth回调：用code换取access_token和用户信息"""
+    code = request.args.get('code')
+    if not code:
+        return redirect('/?auth_error=no_code')
+
+    try:
+        # 用code换取token
+        token_resp = requests.get(f"{OAUTH_BASE}/token", params={
+            'client_id': APP_CLIENT_ID,
+            'client_secret': APP_CLIENT_SECRET,
+            'redirect_uri': REDIRECT_URI,
+            'grant_type': 'authorization_code',
+            'code': code
+        }, timeout=30)
+
+        token_data = token_resp.json()
+        user_access_token = token_data.get('access_token')
+        user_open_id = token_data.get('user_id')
+
+        if not user_access_token or not user_open_id:
+            return redirect('/?auth_error=token_failed')
+
+        # 获取用户昵称
+        nick = ''
+        try:
+            userinfo_resp = requests.get(f"{OAUTH_BASE}/userinfo", params={
+                'access_token': user_access_token
+            }, timeout=10)
+            userinfo = userinfo_resp.json()
+            nick = userinfo.get('data', {}).get('nick', '')
+        except:
+            pass
+
+        # 存入session
+        session['user_access_token'] = user_access_token
+        session['user_open_id'] = user_open_id
+        session['user_nick'] = nick
+
+        # 重定向到首页，带上用户信息
+        return redirect(f"/?nick={nick}&open_id={user_open_id}")
+
+    except Exception as e:
+        return redirect(f'/?auth_error={str(e)}')
+
+
+@app.route('/auth/userinfo')
+def auth_userinfo():
+    """获取当前登录用户的OAuth信息"""
+    nick = session.get('user_nick', '')
+    open_id = session.get('user_open_id', '')
+    if nick and open_id:
+        return jsonify({"success": True, "nick": nick, "open_id": open_id})
+    return jsonify({"success": False, "error": "未登录"})
 
 
 def get_headers():
