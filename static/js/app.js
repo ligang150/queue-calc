@@ -211,19 +211,21 @@ function debounce(func, wait) {
     };
 }
 
-// 防止 calculateDate 并发执行
-let isCalculating = false;
+// 版本号机制：确保最后一次字段变化一定会触发计算
+let calcVersion = 0;
+let pendingCalcs = 0; // 正在进行的计算数量
 
 async function calculateDate() {
-    if (isCalculating) return;
-    isCalculating = true;
+    calcVersion++;
+    const myVersion = calcVersion;
+    pendingCalcs++;
     
     const model = document.getElementById('model').value;
     const tonnage = document.getElementById('tonnage').value;
     const customer = document.getElementById('customer').value;
     const expectedDate = document.getElementById('expectedDate').value;
     if (!model || !tonnage || !customer || !expectedDate) {
-        isCalculating = false;
+        pendingCalcs--;
         return;
     }
 
@@ -236,6 +238,13 @@ async function calculateDate() {
             body: JSON.stringify({ model, tonnage, customer, expected_date: expectedDate, pending_row_index: pendingRowIndex, submitter_id: currentUser.id })
         });
         const data = await response.json();
+        
+        // 如果期间有更新的计算请求，丢弃本次结果
+        if (myVersion !== calcVersion) {
+            pendingCalcs--;
+            return;
+        }
+        
         if (data.success) {
             const calcDate = data.calculated_date || '';
             document.getElementById('calculatedDate').value = calcDate || '计算失败';
@@ -245,9 +254,8 @@ async function calculateDate() {
             const isDate = calcDate && calcDate.match(/\d{4}-\d{2}-\d{2}/);
             const queueDateInput = document.getElementById('queueDate');
             if (!isDate && calcDate) {
-                // 不是日期（如"请联系商务支持"），把date input替换为text input显示提示
-                const parent = queueDateInput.parentNode;
                 queueDateInput.style.display = 'none';
+                const parent = queueDateInput.parentNode;
                 const oldHint = parent.querySelector('.queue-date-hint');
                 if (oldHint) oldHint.remove();
                 const hint = document.createElement('input');
@@ -258,7 +266,6 @@ async function calculateDate() {
                 hint.style.cssText = 'width:100%;padding:12px 15px;border:1px solid #ddd;border-radius:8px;font-size:15px;background:#fff0f0;color:#e74c3c;font-weight:500;';
                 parent.insertBefore(hint, queueDateInput.nextSibling);
             } else if (isDate) {
-                // 是有效日期，F列排队日期默认等于E列可发货日期
                 queueDateInput.style.display = '';
                 queueDateInput.disabled = false;
                 queueDateInput.style.background = '';
@@ -277,38 +284,23 @@ async function calculateDate() {
             pendingRowIndex = 0;
         }
     } catch (error) {
+        if (myVersion !== calcVersion) {
+            pendingCalcs--;
+            return;
+        }
         document.getElementById('calculatedDate').value = '计算失败';
         pendingRowIndex = 0;
-    } finally {
-        isCalculating = false;
     }
+    pendingCalcs--;
 }
 
 async function handleCreateOrder(e) {
     e.preventDefault();
     
-    // 如果有预计算行，先重新计算以确保数据最新（解决并发问题）
-    if (pendingRowIndex > 0) {
-        try {
-            const calcResponse = await apiFetch(`${API_BASE}/api/calculate-date`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: document.getElementById('model').value,
-                    tonnage: document.getElementById('tonnage').value,
-                    customer: document.getElementById('customer').value,
-                    expected_date: document.getElementById('expectedDate').value,
-                    pending_row_index: pendingRowIndex,
-                    submitter_id: currentUser.id
-                })
-            });
-            const calcData = await calcResponse.json();
-            if (calcData.success) {
-                document.getElementById('calculatedDate').value = calcData.calculated_date || '';
-            }
-        } catch (err) {
-            console.log('重新计算失败:', err);
-        }
+    // 等待当前计算完成（最多等5秒）
+    const startWait = Date.now();
+    while (pendingCalcs > 0 && Date.now() - startWait < 5000) {
+        await new Promise(r => setTimeout(r, 300));
     }
     
     const calculatedDate = document.getElementById('calculatedDate').value;
