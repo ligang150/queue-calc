@@ -30,8 +30,11 @@ _whitelist_cache_time = 0
 WHITELIST_CACHE_TTL = 300  # 缓存5分钟
 
 
+# 授权表sheetId
+AUTH_SHEET_ID = "ceccgn"
+
 def get_wechat_whitelist():
-    """从表格Sheet 000008的C列读取微信名白名单"""
+    """从授权表ceccgn的A列读取微信名白名单（跳过表头）"""
     global _whitelist_cache, _whitelist_cache_time
     import time
     now = time.time()
@@ -40,7 +43,7 @@ def get_wechat_whitelist():
 
     names = []
     try:
-        grid_data = read_sheet_range(MODEL_SHEET_ID, "C1:C50")
+        grid_data = read_sheet_range(AUTH_SHEET_ID, "A2:A50")
         rows = grid_data.get("rows", [])
         for row in rows:
             for v in row.get("values", []):
