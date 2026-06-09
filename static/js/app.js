@@ -16,7 +16,31 @@ function apiFetch(url, options = {}) {
     return fetch(url, options);
 }
 
+// 页面显示时（包括bfcache恢复）强制清除表单
+window.addEventListener('pageshow', function(e) {
+    if (e.persisted) {
+        // 从bfcache恢复，强制清除所有表单
+        clearOrderForm();
+    }
+});
+
+function clearOrderForm() {
+    const form = document.getElementById('orderForm');
+    if (form) form.reset();
+    const model = document.getElementById('model');
+    if (model) model.value = '';
+    const tonnage = document.getElementById('tonnage');
+    if (tonnage) tonnage.value = '';
+    const customer = document.getElementById('customer');
+    if (customer) customer.value = '';
+    const calc = document.getElementById('calculatedDate');
+    if (calc) calc.value = '';
+    pendingRowIndex = 0;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    // 首次加载也强制清除
+    clearOrderForm();
     if (accessPassword) {
         // 有密码，自动验证
         fetch(`${API_BASE}/auth/check`, {
