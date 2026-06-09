@@ -200,36 +200,6 @@ body {
     margin-top: 8px;
 }
 
-.auth-tabs {
-    display: flex;
-    gap: 8px;
-    margin: 16px 0 8px;
-    justify-content: center;
-}
-
-.auth-tab {
-    padding: 8px 16px;
-    border: none;
-    background: #f0f0f0;
-    border-radius: 20px;
-    font-size: 13px;
-    cursor: pointer;
-    color: #666;
-}
-
-.auth-tab.active {
-    background: #667eea;
-    color: white;
-}
-
-.auth-panel {
-    display: none;
-}
-
-.auth-panel.active {
-    display: block;
-}
-
 .auth-btn-wechat {
     padding: 14px 32px;
     background: #07c160;
@@ -239,6 +209,15 @@ body {
     font-size: 16px;
     font-weight: 500;
     cursor: pointer;
+    width: 100%;
+}
+
+.auth-switch {
+    color: #667eea;
+    font-size: 13px;
+    margin-top: 16px;
+    cursor: pointer;
+    text-decoration: underline;
 }
 
 .auth-form {

@@ -84,11 +84,14 @@ function hideAuthOverlay() {
     document.getElementById('authOverlay').style.display = 'none';
 }
 
-function switchAuthTab(tab) {
-    document.getElementById('tabOAuth').classList.toggle('active', tab === 'oauth');
-    document.getElementById('tabManual').classList.toggle('active', tab === 'manual');
-    document.getElementById('oauthPanel').classList.toggle('active', tab === 'oauth');
-    document.getElementById('manualPanel').classList.toggle('active', tab === 'manual');
+function showManualInput() {
+    document.getElementById('authMainPanel').style.display = 'none';
+    document.getElementById('authManualPanel').style.display = 'block';
+}
+
+function showOAuthPanel() {
+    document.getElementById('authMainPanel').style.display = 'block';
+    document.getElementById('authManualPanel').style.display = 'none';
 }
 
 function doOAuthAuth() {
@@ -98,11 +101,11 @@ function doOAuthAuth() {
         if (data.success && data.url) {
             window.location.href = data.url;
         } else {
-            document.getElementById('oauthError').textContent = data.error || '获取授权链接失败';
+            document.getElementById('oauthError').textContent = data.error || '获取授权链接失败，请使用手动输入';
         }
     })
     .catch(() => {
-        document.getElementById('oauthError').textContent = '网络错误';
+        document.getElementById('oauthError').textContent = '网络错误，请使用手动输入';
     });
 }
 
