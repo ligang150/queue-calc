@@ -216,25 +216,49 @@ function setupEventListeners() {
         }
     });
     // 日期选择器：点击日期后自动关闭
-    // 使用多种事件确保兼容性
+    // 方案：监听focus事件，当选择器打开后，在document上监听一次click/touch，
+    // 如果点击的是日历中的日期（通过检测值变化判断），则关闭选择器
     ['expectedDate', 'queueDate', 'editExpectedDate', 'editQueueDate'].forEach(fieldId => {
         const field = document.getElementById(fieldId);
-        if (field) {
-            // 方案1：监听input事件（部分浏览器支持）
-            field.addEventListener('input', function() {
-                this.blur();
-            });
-            // 方案2：轮询检测值变化（兜底方案）
-            let lastVal = field.value;
-            const checkChange = setInterval(() => {
-                if (field.value !== lastVal) {
-                    lastVal = field.value;
-                    field.blur();
+        if (!field) return;
+        
+        field.addEventListener('focus', function onFocus() {
+            const startVal = field.value;
+            let closed = false;
+            
+            function closePicker() {
+                if (closed) return;
+                closed = true;
+                field.blur();
+                document.removeEventListener('click', tryClose, true);
+                document.removeEventListener('touchend', tryClose, true);
+            }
+            
+            function tryClose(e) {
+                // 如果值变了，说明选了日期，关闭选择器
+                if (field.value !== startVal) {
+                    closePicker();
+                    return;
                 }
-            }, 300);
-            // 页面卸载时清除定时器
-            window.addEventListener('beforeunload', () => clearInterval(checkChange));
-        }
+                // 如果点击的是"设置/完成"按钮区域（通常在底部），也关闭
+                // 通过延迟检测值是否变化来判断
+                setTimeout(() => {
+                    if (field.value !== startVal) {
+                        closePicker();
+                    }
+                }, 100);
+            }
+            
+            // 使用capture阶段监听，确保在事件冒泡前捕获
+            document.addEventListener('click', tryClose, true);
+            document.addEventListener('touchend', tryClose, true);
+            
+            // 安全清理：5秒后自动移除监听器
+            setTimeout(() => {
+                document.removeEventListener('click', tryClose, true);
+                document.removeEventListener('touchend', tryClose, true);
+            }, 5000);
+        });
     });
     // 监听用户操作，记录活动时间
     ['click', 'keydown', 'scroll', 'touchstart'].forEach(evt => {
@@ -622,7 +646,7 @@ async function handleChangePassword(e) {
         const response = await apiFetch(`${API_BASE}/api/users/password`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+            body: JSON.stringify({ employee_id: employeeId, old_password: oldPassword, new_password: newPassword })
         });
         const data = await response.json();
         if (data.success) {
