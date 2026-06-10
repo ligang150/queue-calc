@@ -219,11 +219,27 @@ body {
     margin-top: 8px;
 }
 
-.auth-form input {
+.auth-form input,
+.auth-form select {
     padding: 12px 15px;
     border: 1px solid #ddd;
     border-radius: 8px;
     font-size: 14px;
+    width: 100%;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: #fff;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+}
+
+.auth-form select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102,126,234,0.15);
 }
 
 .auth-form button {
