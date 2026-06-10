@@ -381,22 +381,31 @@ def calculate_date():
             empty_row = get_next_empty_row(SHEET_ID)
             write_row_idx = empty_row - 1
             remark = f"{tonnage}{customer}"
-            # 扫描I列已有数据，找到最大序号+1
+            # 扫描A列和I列，只取A列有数据的行对应的I列序号，找到最大序号+1
             max_serial = 0
             batch_size = 50
             for offset in range(0, 200, batch_size):
                 start = offset + 1
                 end = offset + batch_size
-                i_data = read_sheet_range(SHEET_ID, f"I{start}:I{end}")
-                i_rows = i_data.get("rows", [])
-                for row in i_rows:
-                    for v in row.get("values", []):
-                        cv = v.get("cellValue")
-                        if cv:
-                            val = parse_cell_value(cv)
-                            if val and str(val).isdigit():
-                                max_serial = max(max_serial, int(val))
-                if len(i_rows) < batch_size:
+                # 同时读取A列和I列
+                ai_data = read_sheet_range(SHEET_ID, f"A{start}:A{end},I{start}:I{end}")
+                ai_rows = ai_data.get("rows", [])
+                for row in ai_rows:
+                    values = row.get("values", [])
+                    # A列有数据才计算序号
+                    a_val = ""
+                    i_val = ""
+                    if len(values) > 0:
+                        a_cv = values[0].get("cellValue")
+                        if a_cv:
+                            a_val = parse_cell_value(a_cv)
+                    if len(values) > 8:
+                        i_cv = values[8].get("cellValue")
+                        if i_cv:
+                            i_val = parse_cell_value(i_cv)
+                    if a_val.strip() and i_val and str(i_val).isdigit():
+                        max_serial = max(max_serial, int(i_val))
+                if len(ai_rows) < batch_size:
                     break
             serial_no = str(max_serial + 1)
             resp = write_order_row(
@@ -490,23 +499,32 @@ def create_order():
             # 新建行：找到第一个空行
             empty_row = get_next_empty_row(SHEET_ID)
             write_row_idx = empty_row - 1
-            # 扫描所有已有数据行，找到最大序号+1
+            # 扫描A列和I列，只取A列有数据的行对应的I列序号，找到最大序号+1
             serial_no = str(write_row_idx)
             max_serial = 0
             batch_size = 50
             for offset in range(0, 200, batch_size):
                 start = offset + 1
                 end = offset + batch_size
-                i_data = read_sheet_range(SHEET_ID, f"I{start}:I{end}")
-                i_rows = i_data.get("rows", [])
-                for row in i_rows:
-                    for v in row.get("values", []):
-                        cv = v.get("cellValue")
-                        if cv:
-                            val = parse_cell_value(cv)
-                            if val and str(val).isdigit():
-                                max_serial = max(max_serial, int(val))
-                if len(i_rows) < batch_size:
+                # 同时读取A列和I列
+                ai_data = read_sheet_range(SHEET_ID, f"A{start}:A{end},I{start}:I{end}")
+                ai_rows = ai_data.get("rows", [])
+                for row in ai_rows:
+                    values = row.get("values", [])
+                    # A列有数据才计算序号
+                    a_val = ""
+                    i_val = ""
+                    if len(values) > 0:
+                        a_cv = values[0].get("cellValue")
+                        if a_cv:
+                            a_val = parse_cell_value(a_cv)
+                    if len(values) > 8:
+                        i_cv = values[8].get("cellValue")
+                        if i_cv:
+                            i_val = parse_cell_value(i_cv)
+                    if a_val.strip() and i_val and str(i_val).isdigit():
+                        max_serial = max(max_serial, int(i_val))
+                if len(ai_rows) < batch_size:
                     break
             if max_serial > 0:
                 serial_no = str(max_serial + 1)
