@@ -15,6 +15,10 @@ FILE_ID = "DRkR6aXhGcWxLYVFR"
 SHEET_ID = "000007"       # 自助排队表格
 MODEL_SHEET_ID = "000008"  # 牌号表格
 
+# 用户表配置
+USER_FILE_ID = "DRnhDemRIS25mdnFF"
+USER_SHEET_ID = "s9osf8"
+
 # 服务端配置（用于API调用）
 CLIENT_ID = os.environ.get('CLIENT_ID', 'da815d1227294457b43413bdc16e3e90')
 ACCESS_TOKEN = os.environ.get('ACCESS_TOKEN', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbHQiOiJkYTgxNWQxMjI3Mjk0NDU3YjQzNDEzYmRjMTZlM2U5MCIsInR5cCI6MSwiZXhwIjoxNzgyMDk0NTcyLjEwODc1MywiaWF0IjoxNzc5NTAyNTcyLjEwODc1Mywic3ViIjoiOWJjMTcyZTUzMzgxNDdkOGEzNWMxNDM4ZWE4ZDE1NzcifQ.rm3BIdD1V7FrCwdToT2arErs06xWF7hTqAh0KsCKsdw')
@@ -52,12 +56,34 @@ def auth_check():
 
 @app.route('/auth/login', methods=['POST'])
 def auth_login():
-    """密码验证"""
+    """员工号+密码验证"""
     data = request.json
+    employee_id = data.get('employee_id', '')
     password = data.get('password', '')
-    if password == ACCESS_PASSWORD:
-        return jsonify({"success": True})
-    return jsonify({"success": False, "error": "密码错误"})
+    users = read_users()
+    for user in users:
+        if user["employee_id"] == employee_id:
+            if user["password"] == password:
+                return jsonify({
+                    "success": True,
+                    "user": {
+                        "name": user["name"],
+                        "employee_id": user["employee_id"]
+                    }
+                })
+            else:
+                return jsonify({"success": False, "error": "密码错误"})
+    return jsonify({"success": False, "error": "员工号不存在"})
+
+
+@app.route('/auth/users', methods=['GET'])
+def auth_users():
+    """返回用户列表（用于前端下拉选择）"""
+    users = read_users()
+    return jsonify({
+        "success": True,
+        "users": [{"name": u["name"], "employee_id": u["employee_id"]} for u in users]
+    })
 
 
 def get_headers():
@@ -68,6 +94,26 @@ def get_headers():
         "Open-Id": OPEN_ID,
         "Client-Id": CLIENT_ID
     }
+
+
+def read_users():
+    """读取用户表（A2:C30），返回 [{name, employee_id, password}, ...]"""
+    url = f"{BASE_URL}/files/{USER_FILE_ID}/{USER_SHEET_ID}/A2:C30"
+    resp = requests.get(url, headers=get_headers(), timeout=30)
+    users = []
+    if resp.status_code == 200:
+        data = resp.json()
+        rows = data.get("gridData", {}).get("rows", [])
+        for row in rows:
+            values = row.get("values", [])
+            row_data = [parse_cell_value(v.get("cellValue")) for v in values]
+            if len(row_data) >= 3 and row_data[0] and row_data[1]:
+                users.append({
+                    "name": row_data[0],
+                    "employee_id": row_data[1],
+                    "password": row_data[2]
+                })
+    return users
 
 
 def parse_cell_value(cell_value):
@@ -545,17 +591,23 @@ def update_order(row_index):
 
         remark = f"{tonnage}{customer}"
 
-        # 读取原订单检查吨位
+        # 读取原订单检查权限和吨位
         grid_data = read_sheet_range(SHEET_ID, f"A{row_index}:L{row_index}")
         rows = grid_data.get("rows", [])
         if rows:
             orig_values = [parse_cell_value(v.get("cellValue")) for v in rows[0].get("values", [])]
             original_tonnage = orig_values[1] if len(orig_values) > 1 else "0"
+            row_submitter_id = orig_values[10] if len(orig_values) > 10 else ""
+            # 权限检查：只能操作自己的数据
+            if row_submitter_id and row_submitter_id != submitter_id:
+                return jsonify({"success": False, "error": "无权修改他人订单"})
             try:
                 if float(tonnage) > float(original_tonnage):
                     return jsonify({"success": False, "error": "吨位只能改小不能改大"})
             except ValueError:
                 pass
+        else:
+            return jsonify({"success": False, "error": "订单不存在"})
 
         # 更新（row_index是1-based，转为0-based）
         write_idx = row_index - 1
@@ -580,6 +632,20 @@ def update_order(row_index):
 def delete_order(row_index):
     """删除订单（row_index是1-based）"""
     try:
+        submitter_id = request.args.get('submitter_id', '')
+
+        # 读取原订单检查权限
+        grid_data = read_sheet_range(SHEET_ID, f"A{row_index}:L{row_index}")
+        rows = grid_data.get("rows", [])
+        if rows:
+            orig_values = [parse_cell_value(v.get("cellValue")) for v in rows[0].get("values", [])]
+            row_submitter_id = orig_values[10] if len(orig_values) > 10 else ""
+            # 权限检查：只能操作自己的数据
+            if row_submitter_id and row_submitter_id != submitter_id:
+                return jsonify({"success": False, "error": "无权删除他人订单"})
+        else:
+            return jsonify({"success": False, "error": "订单不存在"})
+
         resp = delete_row(row_index)
         result = resp.json()
         if "responses" in result:
@@ -587,6 +653,69 @@ def delete_order(row_index):
             if deleted > 0:
                 return jsonify({"success": True, "message": "订单删除成功"})
         return jsonify({"success": False, "error": json.dumps(result, ensure_ascii=False)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route('/api/users/password', methods=['PUT'])
+@require_auth
+def update_password():
+    """修改密码：验证旧密码后更新腾讯文档用户表"""
+    try:
+        data = request.json
+        employee_id = data.get('employee_id', '')
+        old_password = data.get('old_password', '')
+        new_password = data.get('new_password', '')
+
+        if not employee_id or not old_password or not new_password:
+            return jsonify({"success": False, "error": "参数不完整"})
+
+        # 读取用户表找到对应行
+        url = f"{BASE_URL}/files/{USER_FILE_ID}/{USER_SHEET_ID}/A2:C30"
+        resp = requests.get(url, headers=get_headers(), timeout=30)
+        if resp.status_code != 200:
+            return jsonify({"success": False, "error": "读取用户表失败"})
+
+        data_resp = resp.json()
+        rows = data_resp.get("gridData", {}).get("rows", [])
+        target_row = None
+        for i, row in enumerate(rows):
+            values = row.get("values", [])
+            row_data = [parse_cell_value(v.get("cellValue")) for v in values]
+            if len(row_data) >= 2 and row_data[1] == employee_id:
+                if len(row_data) >= 3 and row_data[2] == old_password:
+                    target_row = i + 2  # A2 开始，所以 +2
+                else:
+                    return jsonify({"success": False, "error": "旧密码错误"})
+                break
+
+        if target_row is None:
+            return jsonify({"success": False, "error": "员工号不存在"})
+
+        # 更新密码（C列，文本格式）
+        body = {
+            "requests": [{
+                "updateRangeRequest": {
+                    "sheetId": USER_SHEET_ID,
+                    "gridData": {
+                        "startRow": target_row - 1,  # 0-based
+                        "startColumn": 2,  # C列
+                        "rows": [{"values": [{"cellValue": {"text": new_password}}]}]
+                    }
+                }
+            }]
+        }
+        update_resp = requests.post(
+            f"{BASE_URL}/files/{USER_FILE_ID}/batchUpdate",
+            headers=get_headers(),
+            json=body,
+            timeout=30
+        )
+        result = update_resp.json()
+        if "responses" in result:
+            return jsonify({"success": True, "message": "密码修改成功"})
+        else:
+            return jsonify({"success": False, "error": json.dumps(result, ensure_ascii=False)})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 

@@ -4,14 +4,18 @@ let modelOptions = [];
 let pendingRowIndex = 0;
 const API_BASE = '';
 
-// 从localStorage读取密码
+// 从localStorage读取密码和员工ID
 let accessPassword = localStorage.getItem('accessPassword') || '';
+let employeeId = localStorage.getItem('employeeId') || '';
 
-// 所有API请求自动带上密码头
+// 所有API请求自动带上密码头和员工ID头
 function apiFetch(url, options = {}) {
     options.headers = options.headers || {};
     if (accessPassword) {
         options.headers['X-Access-Password'] = accessPassword;
+    }
+    if (employeeId) {
+        options.headers['X-Employee-Id'] = employeeId;
     }
     return fetch(url, options);
 }
@@ -41,10 +45,10 @@ function clearOrderForm() {
 document.addEventListener('DOMContentLoaded', function() {
     // 首次加载也强制清除
     clearOrderForm();
-    if (accessPassword) {
-        // 有密码，自动验证
+    if (accessPassword && employeeId) {
+        // 有密码和员工ID，自动验证
         fetch(`${API_BASE}/auth/check`, {
-            headers: { 'X-Access-Password': accessPassword }
+            headers: { 'X-Access-Password': accessPassword, 'X-Employee-Id': employeeId }
         })
         .then(r => r.json())
         .then(data => {
@@ -54,8 +58,10 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 // 密码已变更，清除并弹出登录
                 accessPassword = '';
+                employeeId = '';
                 localStorage.removeItem('accessPassword');
-                showAuthOverlay('密码已变更，请重新输入');
+                localStorage.removeItem('employeeId');
+                showAuthOverlay('密码已变更，请重新登录');
             }
         })
         .catch(() => showAuthOverlay('网络错误，请重试'));
@@ -67,14 +73,39 @@ document.addEventListener('DOMContentLoaded', function() {
 function showAuthOverlay(errorMsg) {
     document.getElementById('authOverlay').style.display = 'flex';
     if (errorMsg) document.getElementById('authError').textContent = errorMsg;
+    loadAuthUsers();
 }
 
 function hideAuthOverlay() {
     document.getElementById('authOverlay').style.display = 'none';
 }
 
+async function loadAuthUsers() {
+    try {
+        const response = await fetch(`${API_BASE}/auth/users`);
+        const data = await response.json();
+        const select = document.getElementById('authUserSelect');
+        select.innerHTML = '<option value="">请选择员工</option>';
+        if (data.success && Array.isArray(data.users)) {
+            data.users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.name;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('加载用户列表失败', error);
+    }
+}
+
 function doAuth() {
+    const selectedEmployeeId = document.getElementById('authUserSelect').value;
     const password = document.getElementById('authPassword').value.trim();
+    if (!selectedEmployeeId) {
+        document.getElementById('authError').textContent = '请选择员工';
+        return;
+    }
     if (!password) {
         document.getElementById('authError').textContent = '请输入密码';
         return;
@@ -82,13 +113,17 @@ function doAuth() {
     fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ employee_id: selectedEmployeeId, password })
     })
     .then(r => r.json())
     .then(data => {
         if (data.success) {
             accessPassword = password;
+            employeeId = selectedEmployeeId;
             localStorage.setItem('accessPassword', password);
+            localStorage.setItem('employeeId', selectedEmployeeId);
+            currentUser.name = data.name || '用户';
+            currentUser.id = selectedEmployeeId;
             hideAuthOverlay();
             initApp();
         } else {
@@ -100,13 +135,14 @@ function doAuth() {
     });
 }
 
-// 未提交订单的临时数据（页面关闭/刷新时清除）
+// 未提交排队的临时数据（页面关闭/刷新时清除）
 let draftQueue = null;
 let lastActivityTime = Date.now();
 const IDLE_TIMEOUT = 10 * 60 * 1000; // 10分钟无操作强制退出
 
 function initApp() {
     document.getElementById('userName').textContent = currentUser.name;
+    document.getElementById('changePwdBtn').style.display = 'inline-block';
     loadModels();
     // 先清空所有字段（在绑定事件之前，避免触发计算）
     document.getElementById('model').value = '';
@@ -168,6 +204,7 @@ function populateModelSelect(selectId, models) {
 function setupEventListeners() {
     document.getElementById('orderForm').addEventListener('submit', handleCreateOrder);
     document.getElementById('editForm').addEventListener('submit', handleUpdateOrder);
+    document.getElementById('changePwdForm').addEventListener('submit', handleChangePassword);
     // 监听表单字段变化，记录草稿
     const draftFields = ['model', 'tonnage', 'customer', 'expectedDate', 'queueDate'];
     draftFields.forEach(fieldId => {
@@ -418,8 +455,6 @@ function renderOrders(orders) {
                 <th>型号</th>
                 <th>吨位</th>
                 <th>客户</th>
-                <th>期望发货</th>
-                <th>可发货</th>
                 <th>排队日期</th>
                 <th>操作</th>
             </tr>
@@ -431,8 +466,6 @@ function renderOrders(orders) {
             <td class="td-model">${escapeHtml(order.model)}</td>
             <td>${escapeHtml(order.tonnage)}</td>
             <td>${escapeHtml(order.customer)}</td>
-            <td>${escapeHtml(order.expected_date)}</td>
-            <td class="td-calc">${escapeHtml(order.calculated_date) || '-'}</td>
             <td>${escapeHtml(order.queue_date)}</td>
             <td class="td-actions">
                 <button class="btn-edit" onclick="openEditModal(${order.row_index})">改</button>
@@ -524,6 +557,54 @@ async function openEditModal(rowIndex) {
 
 function closeEditModal() {
     document.getElementById('editModal').classList.remove('show');
+}
+
+function openChangePwdModal() {
+    document.getElementById('changePwdForm').reset();
+    document.getElementById('changePwdModal').classList.add('show');
+}
+
+function closeChangePwdModal() {
+    document.getElementById('changePwdModal').classList.remove('show');
+}
+
+async function handleChangePassword(e) {
+    e.preventDefault();
+    const oldPassword = document.getElementById('oldPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+        showToast('请填写所有密码字段', 'error');
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        showToast('两次输入的新密码不一致', 'error');
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE}/api/users/password`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast('密码修改成功，请重新登录', 'success');
+            closeChangePwdModal();
+            // 清除登录状态并重新登录
+            accessPassword = '';
+            employeeId = '';
+            localStorage.removeItem('accessPassword');
+            localStorage.removeItem('employeeId');
+            showAuthOverlay('密码已修改，请重新登录');
+        } else {
+            showToast(data.error || '密码修改失败', 'error');
+        }
+    } catch (error) {
+        showToast('网络错误', 'error');
+    }
 }
 
 async function calculateDateForEdit() {
@@ -660,6 +741,8 @@ function showToast(message, type = 'info') {
 window.onclick = function(event) {
     const modal = document.getElementById('editModal');
     if (event.target === modal) closeEditModal();
+    const changePwdModal = document.getElementById('changePwdModal');
+    if (event.target === changePwdModal) closeChangePwdModal();
 }
 
 // ============ 草稿管理：未提交排队退出页面时清除 ============
@@ -709,7 +792,9 @@ function startIdleTimer() {
         if (idleTime >= IDLE_TIMEOUT) {
             // 强制退出：清除密码并要求重新登录
             accessPassword = '';
+            employeeId = '';
             localStorage.removeItem('accessPassword');
+            localStorage.removeItem('employeeId');
             // 如果有未提交的排队，清除
             if (hasUnsavedOrder()) {
                 document.getElementById('orderForm').reset();
