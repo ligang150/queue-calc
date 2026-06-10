@@ -215,13 +215,25 @@ function setupEventListeners() {
             field.addEventListener('change', saveDraft);
         }
     });
-    // 日期选择器：点击日期后自动关闭（通过blur实现）
+    // 日期选择器：点击日期后自动关闭
+    // 使用多种事件确保兼容性
     ['expectedDate', 'queueDate', 'editExpectedDate', 'editQueueDate'].forEach(fieldId => {
         const field = document.getElementById(fieldId);
         if (field) {
+            // 方案1：监听input事件（部分浏览器支持）
             field.addEventListener('input', function() {
                 this.blur();
             });
+            // 方案2：轮询检测值变化（兜底方案）
+            let lastVal = field.value;
+            const checkChange = setInterval(() => {
+                if (field.value !== lastVal) {
+                    lastVal = field.value;
+                    field.blur();
+                }
+            }, 300);
+            // 页面卸载时清除定时器
+            window.addEventListener('beforeunload', () => clearInterval(checkChange));
         }
     });
     // 监听用户操作，记录活动时间
