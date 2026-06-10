@@ -580,9 +580,32 @@ body {
         padding: 10px 4px;
     }
     
+    /* 紧凑标签+输入框布局 */
     .form-row {
         flex-direction: column;
         gap: 0;
+    }
+    
+    .form-row .form-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    
+    .form-row .form-group label {
+        width: 50px;
+        flex-shrink: 0;
+        margin-bottom: 0;
+        font-size: 14px;
+        text-align: right;
+    }
+    
+    .form-row .form-col input,
+    .form-row .form-col select {
+        flex: 1;
+        padding: 8px 10px;
+        font-size: 14px;
     }
     
     .filter-bar {
