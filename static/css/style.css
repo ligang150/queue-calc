@@ -577,8 +577,15 @@ body {
 }
 
 .feedback-phone {
-    color: #667eea;
+    color: #e74c3c;
     text-decoration: none;
+}
+
+.feedback-phone:link,
+.feedback-phone:visited,
+.feedback-phone:hover,
+.feedback-phone:active {
+    color: #e74c3c;
 }
 
 .feedback-tip {

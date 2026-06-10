@@ -473,18 +473,26 @@ def create_order():
             # 新建行：找到第一个空行
             empty_row = get_next_empty_row(SHEET_ID)
             write_row_idx = empty_row - 1
-            # 读取前一行的序号，+1
+            # 扫描所有已有数据行，找到最大序号+1
             serial_no = str(write_row_idx)
-            if write_row_idx > 2:  # 前面有数据行
-                prev_row_data = read_sheet_range(SHEET_ID, f"I{write_row_idx}:I{write_row_idx}")
-                prev_rows = prev_row_data.get("rows", [])
-                if prev_rows:
-                    for v in prev_rows[0].get("values", []):
+            max_serial = 0
+            batch_size = 50
+            for offset in range(0, 200, batch_size):
+                start = offset + 1
+                end = offset + batch_size
+                i_data = read_sheet_range(SHEET_ID, f"I{start}:I{end}")
+                i_rows = i_data.get("rows", [])
+                for row in i_rows:
+                    for v in row.get("values", []):
                         cv = v.get("cellValue")
                         if cv:
-                            prev_serial = parse_cell_value(cv)
-                            if prev_serial and str(prev_serial).isdigit():
-                                serial_no = str(int(prev_serial) + 1)
+                            val = parse_cell_value(cv)
+                            if val and str(val).isdigit():
+                                max_serial = max(max_serial, int(val))
+                if len(i_rows) < batch_size:
+                    break
+            if max_serial > 0:
+                serial_no = str(max_serial + 1)
 
         resp = write_order_row(
             write_row_idx, model, tonnage, customer, expected_date,
