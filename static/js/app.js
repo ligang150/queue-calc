@@ -96,7 +96,7 @@ async function loadAuthUsers() {
             data.users.forEach(user => {
                 const option = document.createElement('option');
                 option.value = user.employee_id;
-                option.textContent = user.name + '（' + user.employee_id + '）';
+                option.textContent = user.name;
                 select.appendChild(option);
             });
         }
