@@ -75,8 +75,9 @@ def read_sheet_range(sheet_id, range_str):
 
 
 def read_single_cell(sheet_id, cell):
-    """读取单个单元格"""
-    grid_data = read_sheet_range(sheet_id, cell)
+    """读取单个单元格（腾讯API读取单个单元格可能返回空，读取范围更稳定）"""
+    # 将如 "M1" 转为 "M1:M1" 范围来读取
+    grid_data = read_sheet_range(sheet_id, f"{cell}:{cell}")
     rows = grid_data.get("rows", [])
     if rows:
         for v in rows[0].get("values", []):
