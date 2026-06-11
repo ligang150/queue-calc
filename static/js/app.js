@@ -124,6 +124,7 @@ function doAuth() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
+            console.log('[doAuth] selectedEmployeeId=', selectedEmployeeId, 'before: employeeId=', employeeId, 'currentUser.id=', currentUser.id);
             accessPassword = data.access_password || '';
             employeeId = selectedEmployeeId;
             const name = data.user?.name || '用户';
@@ -132,6 +133,7 @@ function doAuth() {
             localStorage.setItem('userName', name);
             currentUser.name = name;
             currentUser.id = selectedEmployeeId;
+            console.log('[doAuth] after: employeeId=', employeeId, 'currentUser.id=', currentUser.id);
             hideAuthOverlay();
             initApp();
         } else {
@@ -779,12 +781,14 @@ function showDatePicker(input) {
 }
 
 function doLogout() {
+    console.log('[doLogout] before: employeeId=', employeeId, 'currentUser.id=', currentUser.id);
     accessPassword = '';
     employeeId = '';
     localStorage.removeItem('accessPassword');
     localStorage.removeItem('employeeId');
     localStorage.removeItem('userName');
     currentUser = { name: '用户', id: '' };
+    console.log('[doLogout] after: employeeId=', employeeId, 'currentUser.id=', currentUser.id);
     document.getElementById('changePwdBtn').style.display = 'none';
     document.getElementById('logoutBtn').style.display = 'none';
     document.getElementById('userName').textContent = '未登录';
