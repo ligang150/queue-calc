@@ -217,73 +217,46 @@ def is_date_string(value):
 def write_order_row(row_index_0based, model, tonnage, customer, expected_date, calculated_date, queue_date, submitter, remark, serial_no, submitter_id, submit_time):
     """写入一行订单数据到腾讯表格（row_index_0based从0开始）
     E列（可发货日期）现在由本地计算引擎计算后写入，不再依赖腾讯表格公式
+    优化：合并为单次batchUpdate，减少API调用
     """
-    # A-D列 (0-3)
-    values_left = [
+    # 构建整行12列数据
+    queue_date_is_date = is_date_string(queue_date)
+    
+    # E列值
+    if calculated_date and is_date_string(calculated_date):
+        e_value = build_cell_value(calculated_date, is_date=True)
+    elif calculated_date:
+        e_value = build_cell_value(calculated_date)
+    else:
+        e_value = build_cell_value("")
+    
+    row_values = [
         build_cell_value(model),                        # A: 型号
-        build_cell_value(tonnage, is_number=True),      # B: 吨位（数值）
+        build_cell_value(tonnage, is_number=True),      # B: 吨位
         build_cell_value(customer),                      # C: 客户
         build_cell_value(expected_date, is_date=True),  # D: 期望发货日期
+        e_value,                                         # E: 可发货日期
+        build_cell_value(queue_date, is_date=queue_date_is_date),  # F: 排队日期
+        build_cell_value(submitter),                     # G: 提交人
+        build_cell_value(remark),                        # H: 备注
+        build_cell_value(serial_no),                     # I: 序号
+        build_cell_value(""),                            # J: 上次录入
+        build_cell_value(submitter_id),                  # K: 提交人ID
+        build_cell_value(submit_time),                   # L: 提交时间
     ]
-    # E列 (4) - 可发货日期（由本地计算引擎计算）
-    values_e = []
-    if calculated_date and is_date_string(calculated_date):
-        values_e = [build_cell_value(calculated_date, is_date=True)]
-    elif calculated_date:
-        values_e = [build_cell_value(calculated_date)]
-    else:
-        values_e = [build_cell_value("")]
     
-    # F-L列 (5-11)
-    queue_date_is_date = is_date_string(queue_date)
-    values_right = [
-        build_cell_value(queue_date, is_date=queue_date_is_date),  # F: 输入发货日期排队
-        build_cell_value(submitter),       # G: 提交人
-        build_cell_value(remark),          # H: 备注
-        build_cell_value(serial_no),       # I: 序号
-        build_cell_value(""),              # J: 上次录入
-        build_cell_value(submitter_id),    # K: 提交人ID
-        build_cell_value(submit_time),     # L: 提交时间
-    ]
-
-    # 分三次写入：先写A-D，再写E，再写F-L
-    requests_list = [
-        {
+    body = {
+        "requests": [{
             "updateRangeRequest": {
                 "sheetId": SHEET_ID,
                 "gridData": {
                     "startRow": row_index_0based,
                     "startColumn": 0,
-                    "rows": [{"values": values_left}]
+                    "rows": [{"values": row_values}]
                 }
             }
-        }
-    ]
-    
-    # 写入E列（可发货日期）
-    requests_list.append({
-        "updateRangeRequest": {
-            "sheetId": SHEET_ID,
-            "gridData": {
-                "startRow": row_index_0based,
-                "startColumn": 4,
-                "rows": [{"values": values_e}]
-            }
-        }
-    })
-    
-    requests_list.append({
-        "updateRangeRequest": {
-            "sheetId": SHEET_ID,
-            "gridData": {
-                "startRow": row_index_0based,
-                "startColumn": 5,
-                "rows": [{"values": values_right}]
-            }
-        }
-    })
-    
-    body = {"requests": requests_list}
+        }]
+    }
     return batch_update(body)
 
 
@@ -467,7 +440,7 @@ def calculate_date():
 @app.route('/api/orders', methods=['POST'])
 @require_auth
 def create_order():
-    """创建订单：如果有row_index则更新已有行，否则新建行"""
+    """创建订单：优化版本，减少API调用次数"""
     try:
         data = request.json
         model = data.get('model', '')
@@ -485,56 +458,16 @@ def create_order():
         if row_index > 0:
             # 更新已有行（由calculate_date创建的行）
             write_row_idx = row_index - 1  # 转为0-based
-            # 读取原序号，保持不变
-            grid_data = read_sheet_range(SHEET_ID, f"I{row_index}:I{row_index}")
-            rows = grid_data.get("rows", [])
-            serial_no = str(write_row_idx)
-            if rows:
-                for v in rows[0].get("values", []):
-                    cv = v.get("cellValue")
-                    if cv:
-                        serial_no = parse_cell_value(cv) or str(write_row_idx)
+            # 序号直接用行号，避免读取I列的API调用
+            serial_no = str(row_index)
         else:
             # 新建行：找到第一个空行
             empty_row = get_next_empty_row(SHEET_ID)
             write_row_idx = empty_row - 1
-            # 扫描A列和I列，只取A列有数据的行对应的I列序号，找到最大序号+1
-            serial_no = str(write_row_idx)
-            max_serial = 0
-            batch_size = 50
-            for offset in range(0, 200, batch_size):
-                start = offset + 1
-                end = offset + batch_size
-                # 分别读取A列和I列，用行索引对应
-                a_data = read_sheet_range(SHEET_ID, f"A{start}:A{end}")
-                i_data = read_sheet_range(SHEET_ID, f"I{start}:I{end}")
-                a_rows = a_data.get("rows", [])
-                i_rows = i_data.get("rows", [])
-                for idx in range(len(a_rows)):
-                    a_row = a_rows[idx]
-                    i_row = i_rows[idx] if idx < len(i_rows) else None
-                    # A列有数据才计算序号
-                    a_val = ""
-                    i_val = ""
-                    for v in a_row.get("values", []):
-                        a_cv = v.get("cellValue")
-                        if a_cv:
-                            a_val = parse_cell_value(a_cv)
-                            break
-                    if i_row:
-                        for v in i_row.get("values", []):
-                            i_cv = v.get("cellValue")
-                            if i_cv:
-                                i_val = parse_cell_value(i_cv)
-                                break
-                    if a_val.strip() and i_val and str(i_val).isdigit():
-                        max_serial = max(max_serial, int(i_val))
-                if len(a_rows) < batch_size:
-                    break
-            if max_serial > 0:
-                serial_no = str(max_serial + 1)
+            # 序号直接用行号，避免扫描A/I列的多次API调用
+            serial_no = str(empty_row)
 
-        # 计算可发货日期（用于写入E列）
+        # 计算可发货日期（用于写入E列，有缓存）
         calc_date_for_write, _ = calculate_delivery_date(model, tonnage, expected_date)
         
         resp = write_order_row(
